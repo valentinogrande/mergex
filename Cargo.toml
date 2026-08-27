@@ -7,6 +7,7 @@ description = "A concurrent merge tree: every thread writes to a node it owns, a
 repository = "https://github.com/valentinogrande/mergex"
 documentation = "https://docs.rs/mergex"
 readme = "README.md"
+license = "MIT OR Apache-2.0"
 keywords = ["concurrency", "aggregation", "lock-free", "monoid", "threads"]
 categories = ["concurrency", "data-structures"]
 # the harnesses ship, so the published source matches the repository

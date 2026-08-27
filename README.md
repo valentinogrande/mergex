@@ -379,3 +379,8 @@ cannot.
 The tests (`tests/`, and the unit tests in `src/lib.rs`), the benchmark suite
 (`benches/`), the measurement harnesses (`examples/`), the source comments and
 documentation, and this README were written by Claude Code.
+
+## License
+
+Dual-licensed under either [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE), at
+your option. Contributions are accepted under the same terms.
