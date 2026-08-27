@@ -31,6 +31,10 @@ Nothing is shared on the write path. `root.get()` is what walks the tree, and wh
 nothing has changed it answers in a single atomic load. Workers that finish and drop
 their handle deliver their last write and then disappear from the tree.
 
+This is not the fastest way to add up numbers from several threads, and the next
+section says what is. It is a way to aggregate a *tree* of them, and to ask whether
+anything has changed without looking.
+
 ## The contract
 
 `merge` and `identity` must form a **commutative monoid** over `T`:
@@ -46,36 +50,62 @@ counted twice by two successive reads.
 
 ## Is this the right tool?
 
-**Yes, if** many threads write concurrently and something occasionally reads the
-aggregate. That is the shape it is built for, and it holds up: at eight writers it
-moves **671 million writes per second** against **21.1** for a shared `Mutex<i64>`, a
-factor of 32 — and it is not done climbing: at twelve, the machine's hardware thread
-count, it reaches **795** while the `Mutex` is stuck at 18.4.
+Probably not, and the honest way to start is with what beats it.
 
-**No, if** many threads *read* concurrently. `get()` takes the root's lock, so
-readers queue behind each other and behind any writer. Reads do not scale, and that
-is a property of the design rather than a bug awaiting a fix:
+**If you need a flat per-thread accumulator, use [`thread_local`][tl].** It is faster
+than this crate at every thread count, on cheap and expensive `T` alike, and it needs
+no handle threaded through your code — it finds the slot from the thread id.
 
-| million reads/s | 1 reader | 2 | 4 | 8 |
+| million updates/s, `T = HashMap` | 1 | 2 | 4 | 8 |
 |---|---:|---:|---:|---:|
-| mergex, tree quiet | 91.2 | 18.6 | 16.6 | **13.7** |
-| mergex, one writer alongside | 3.8 | 14.3 | 6.4 | **4.8** |
-| [left-right][lr], one writer alongside | 7.7 | 17.3 | 45.9 | **119.1** |
-| `AtomicI64`, one writer alongside | 259.4 | 310.1 | 590.7 | **746.0** |
+| `ThreadLocal`, padded slots | **70.7** | **140.1** | **273.4** | **304.8** |
+| mergex | 33.5 | 85.3 | 188.9 | 212.0 |
+| one `Mutex<HashMap>` per thread | 55.6 | 26.8 | 27.4 | 60.5 |
+| one shared `Mutex<HashMap>` | 55.8 | 8.7 | 6.5 | 5.2 |
 
-If your workload is read-heavy, [left-right][lr] is the right structure and this one
-is not. The two are built for opposite problems — left-right is one writer and
-wait-free readers, mergex is many writers and an occasional reader — and each loses
-badly on the other's ground. left-right manages 10.2 million writes per second at
-eight writers, the slowest entry in the whole comparison.
+**If your workload is read-heavy, use [left-right][lr].** Its readers are wait-free
+and scale; `get()` here takes the root's lock and does not. At eight concurrent
+readers with a writer alongside, left-right does 119.1 million reads per second
+against 4.8.
 
-**Also no, if** a flat one-level fold is all you need. One cache-line-padded
-`Mutex<i64>` per thread, summed at the end, does 1018 million writes per second
-against mergex's 671, in 128 bytes per producer against 240. Mergex earns its keep
-with the tree — arbitrary depth, coalescing writes, self-cleaning membership, and an
-O(1) answer to "has anything changed?" — not with raw speed.
+**What is left, and it is narrower than it looks:**
 
+- **An O(1) answer to "has anything changed?"** `check_children()` is one atomic load —
+  3.10 ns whether there is one producer or a thousand. Every flat design has to sweep
+  every slot to find out: summing 512 shards costs 3.65 µs. For an observer that polls,
+  that is the difference between polling being free and polling being the workload.
+- **A tree, not a row.** Aggregation at arbitrary depth, folding bottom-up, with each
+  interior node holding a real partial result. Per-thread → per-core → per-socket, or a
+  scope tree where sub-scopes roll into parents.
+- **Membership by handle, not by thread id.** One thread can own several nodes; a node
+  outlives the thread that made it and delivers its last write; nodes retire and are
+  unlinked when their handle drops. `ThreadLocal` gives you exactly one slot per live
+  thread and reuses it when a thread id is recycled.
+
+If none of those three is what you came for, the alternatives above are faster and
+simpler. That is the whole recommendation.
+
+[tl]: https://docs.rs/thread_local
 [lr]: https://docs.rs/left-right
+
+### A note on cache lines, which is most of what these numbers measure
+
+`ThreadLocal` packs its slots contiguously, so with a small `T` two threads land on one
+64-byte line and fight over it. Padding the slot is the difference between a collapse
+and a win:
+
+| million writes/s, `T = i64` | 1 | 2 | 4 | 8 |
+|---|---:|---:|---:|---:|
+| `ThreadLocal<PaddedCell>` | 719.6 | 1226.9 | 2517.3 | **3430.7** |
+| `ThreadLocal<Cell<i64>>` | 736.1 | 1241.0 | 546.0 | **218.9** |
+
+Identical up to two threads, then 15x apart. The same effect governs a hand-rolled
+shard array — one `Mutex<i64>` per thread in a `Vec` is 27x slower than the padded
+version at eight threads — and it is why `Node` here carries `#[repr(align(64))]`.
+Without it this crate's own write benchmark is bimodal, swinging 3x on allocator luck.
+
+If you take one thing from this comparison, take that: for per-thread accumulation, the
+padding decides more than the data structure does.
 
 ## How it works
 
@@ -231,10 +261,15 @@ rather than copying it. Dropping the last one retires the node.
 AMD Ryzen 5 PRO 5650U, 12 threads · rustc 1.95.0 · criterion 0.8.2 · Linux 7.1.4
 
 Every entrant performs the same operation — `+= i` on an `i64`, twenty thousand times
-per thread. What differs is the topology: mergex, `sharded` and `plain_local` hit a
-slot the thread owns, while `Mutex`, `RwLock` and `AtomicI64` hit one cell shared by
-every thread, which is the only way a single cell can hold a running total. That
-difference is the subject of the benchmark.
+per thread. What differs is the topology: mergex, `ThreadLocal`, `sharded` and
+`plain_local` hit a slot the thread owns, while `Mutex`, `RwLock` and `AtomicI64` hit
+one cell shared by every thread, which is the only way a single cell can hold a running
+total. That difference is the subject of the benchmark.
+
+`plain_local` is one plain `i64` per thread with no synchronisation at all, folded on
+join — the ceiling, present so the rest can be read against something absolute. It is
+also the least reproducible entrant, since twenty thousand additions take a few
+microseconds and scheduler skew dominates; read it as an order of magnitude.
 
 ### Write throughput
 
@@ -245,7 +280,9 @@ oversubscription. Bold marks each structure's own peak.
 
 | threads | 1 | 2 | 4 | 8 | 12 | 16 | 24 | 32 |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|
+| `ThreadLocal`, padded | 719.6 | 1226.9 | 2517.3 | **3430.7** | 2737.0 | 1830.1 | 2155.9 | — |
 | `plain_local` | 582.8 | 1242.6 | 2451.6 | **2546.2** | 2350.8 | 1575.2 | 1941.3 | 1784.9 |
+| `ThreadLocal`, unpadded | 736.1 | 1241.0 | 546.0 | 218.9 | 287.6 | 292.2 | 258.3 | — |
 | `sharded_padded` | 142.1 | 274.3 | 547.8 | **1018.0** | 1010.2 | 775.9 | 908.5 | 866.0 |
 | **mergex** | 132.7 | 271.2 | 535.3 | 671.3 | **795.0** | 649.8 | 761.8 | 725.4 |
 | `AtomicI64` | **297.3** | 63.2 | 57.6 | 51.3 | 48.8 | 48.4 | 48.0 | 47.7 |
@@ -265,9 +302,9 @@ queue. There is no lock convoy to see here.
 
 Two things worth reading off the wide table:
 
-**mergex peaks at twelve, not eight.** It is the only entrant still climbing at the
-machine's physical limit — 671 to 795 — while `sharded_padded` had already topped out
-at eight. Mergex uses the last four hardware threads that its rival cannot.
+**mergex peaks at twelve, not eight** — 671 to 795 — where `sharded_padded` had
+already topped out at eight. That is a point in its favour against the shard array and
+nothing more: a padded `ThreadLocal` is above it at every column.
 
 **It degrades best when oversubscribed.** As a share of its own peak at 32 threads:
 mergex 91%, `sharded_padded` 85%, `plain_local` 70%. With no shared lock, a thread
@@ -282,12 +319,8 @@ this is the scheduler, not the structures. And **`sharded` improves with more th
 oversubscription means fewer threads are genuinely simultaneous on the same cache line,
 so its false sharing eases. That one is a hypothesis — it is not measured.
 
-`plain_local` is one plain `i64` per thread with no synchronisation at all, folded on
-join. It is the ceiling, present so the rest can be read against something absolute —
-but it is also the least reproducible entrant, because twenty thousand additions take
-a few microseconds and scheduler skew dominates. Read it as an order of magnitude, not
-a figure. `sharded_padded` is one cache-line-aligned `Mutex<i64>` per thread, summed at
-the end — mergex by hand, one level deep, and the closest thing to a fair rival.
+`sharded_padded` is one cache-line-aligned `Mutex<i64>` per thread, summed at the end —
+mergex by hand, one level deep.
 
 Compare `sharded` against `sharded_padded`: the same idea without the alignment is
 **27x slower** at eight threads. Adjacent shards share a cache line, so the threads

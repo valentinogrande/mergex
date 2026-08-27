@@ -12,9 +12,11 @@
 use left_right::{Absorb, WriteHandle};
 use mergex::Mergex;
 use std::hint::black_box;
+use std::cell::Cell;
 use std::sync::atomic::{AtomicI64, Ordering};
 use std::sync::{Arc, Barrier, Mutex, RwLock};
 use std::thread;
+use thread_local::ThreadLocal;
 use std::time::{Duration, Instant};
 
 const OPS: i64 = 20_000;
@@ -23,6 +25,12 @@ const THREADS: [usize; 8] = [1, 2, 4, 8, 12, 16, 24, 32];
 
 #[repr(align(128))]
 struct Padded(Mutex<i64>);
+
+/// A thread_local slot forced onto its own cache line, to test whether the
+/// collapse past two threads is false sharing between neighbouring slots.
+#[repr(align(128))]
+#[derive(Default)]
+struct PaddedCell(Cell<i64>);
 
 #[derive(Clone)]
 struct Counter(i64);
@@ -105,6 +113,29 @@ worker!(WShard, (Arc<Vec<Mutex<i64>>>, usize), (s, k) => {
 worker!(WShardPad, (Arc<Vec<Padded>>, usize), (s, k) => {
     for i in 1..=OPS { *s[k].0.lock().unwrap() += i; }
 });
+worker!(WTls, Arc<ThreadLocal<Cell<i64>>>, t => {
+    // the slot is looked up on every operation, which is how this is normally written
+    for i in 1..=OPS {
+        let c = t.get_or_default();
+        c.set(c.get() + i);
+        black_box(c); // same barrier plain_local gets: a Cell loop folds to a formula without it
+    }
+});
+worker!(WTlsHoisted, Arc<ThreadLocal<Cell<i64>>>, t => {
+    // looked up once, like carrying a mergex handle: the data structure's floor
+    let c = t.get_or_default();
+    for i in 1..=OPS {
+        c.set(c.get() + i);
+        black_box(c);
+    }
+});
+worker!(WTlsPadded, Arc<ThreadLocal<PaddedCell>>, t => {
+    let c = t.get_or_default();
+    for i in 1..=OPS {
+        c.0.set(c.0.get() + i);
+        black_box(c);
+    }
+});
 worker!(WPlain, (), _u => {
     let mut local = 0i64;
     for i in 1..=OPS { local += i; black_box(&local); }
@@ -142,11 +173,26 @@ fn main() {
             "Mutex",
             "RwLock",
             "left_right",
+            "thread_local",
+            "thread_local_hoisted",
+            "thread_local_padded",
         ] {
             let mut rates = Vec::with_capacity(RUNS);
             for _ in 0..RUNS {
                 let dt = match name {
                     "plain_local" => timed::<_, WPlain>(threads, |_| ()),
+                    "thread_local" => {
+                        let t: Arc<ThreadLocal<Cell<i64>>> = Arc::new(ThreadLocal::new());
+                        timed::<_, WTls>(threads, |_| Arc::clone(&t))
+                    }
+                    "thread_local_hoisted" => {
+                        let t: Arc<ThreadLocal<Cell<i64>>> = Arc::new(ThreadLocal::new());
+                        timed::<_, WTlsHoisted>(threads, |_| Arc::clone(&t))
+                    }
+                    "thread_local_padded" => {
+                        let t: Arc<ThreadLocal<PaddedCell>> = Arc::new(ThreadLocal::new());
+                        timed::<_, WTlsPadded>(threads, |_| Arc::clone(&t))
+                    }
                     "mergex" => {
                         let root = Mergex::new(0i64, 0, |f: &mut i64, s: &i64| *f += *s);
                         let d = timed::<_, WMergex>(threads, |_| root.copy());

@@ -343,6 +343,7 @@ dependencies = [
  "criterion",
  "left-right",
  "loom",
+ "thread_local",
 ]
 
 [[package]]

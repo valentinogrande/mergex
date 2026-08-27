@@ -34,6 +34,7 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
 [dev-dependencies]
 criterion = { version = "0.8.2", features = ["html_reports"] }
 left-right = "0.11.8"
+thread_local = "1.1.10"
 
 [[bench]]
 name = "mergex"
