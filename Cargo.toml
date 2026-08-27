@@ -2,6 +2,20 @@
 name = "mergex"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "A concurrent merge tree: every thread writes to a node it owns, and the aggregate is folded only when someone reads it"
+repository = "https://github.com/valentinogrande/mergex"
+documentation = "https://docs.rs/mergex"
+readme = "README.md"
+keywords = ["concurrency", "aggregation", "lock-free", "monoid", "threads"]
+categories = ["concurrency", "data-structures"]
+# the harnesses ship, so the published source matches the repository
+exclude = ["benchmarks.html"]
+# license = "MIT OR Apache-2.0"   # pick one before publishing; crates.io requires it
+
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 
 [dependencies]

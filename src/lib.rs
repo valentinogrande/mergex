@@ -15,7 +15,16 @@
 //! copy of the aggregate. A fresh son starts at `identity`, and a node is reset
 //! to `identity` as soon as its data has been folded upward.
 
+#![warn(missing_docs)]
+
 use std::mem;
+
+// The README's example is compiled and run as a doctest. It is the public API's
+// only prose description of itself, and it has drifted out of date before -- a
+// signature changed and the snippet kept claiming the old one.
+#[cfg(all(doctest, not(loom)))]
+#[doc = include_str!("../README.md")]
+struct ReadmeExamples;
 
 // Under `--cfg loom` the locks and the flags are rebuilt on loom's instrumented
 // primitives, so the model checker can drive every interleaving the memory
@@ -219,20 +228,40 @@ impl<T: Clone> Mergex<T> {
     /// delta still owed to the father, so it reads back as `identity` right
     /// after a fold, not as everything this node has ever written.
     pub fn get_threaded(&self) -> T {
-        // only get node data.
         self.node.data.lock().unwrap().clone()
     }
 
+    /// Folds every dirty descendant into this node, deepest first, and returns
+    /// the result. Called on the root, that is the aggregate.
+    ///
+    /// When nothing below has changed this is a single atomic load, whatever
+    /// the size of the subtree. When several threads call it at once, one wins
+    /// the sweep and the others return what is currently there rather than
+    /// waiting -- so an individual call can be stale under concurrent readers,
+    /// though nothing is lost and a call on a quiet tree is exact.
+    ///
+    /// ```
+    /// # use mergex::Mergex;
+    /// let root = Mergex::new(10i64, 0, |f: &mut i64, s: &i64| *f += *s);
+    /// let son = root.copy();
+    /// son.set(5);
+    /// assert_eq!(root.get(), 15);
+    /// assert_eq!(root.get(), 15); // the delta is not folded twice
+    /// ```
     pub fn get(&self) -> T {
-        // checks for dirty bits and merge if necesarry. Returns data for all the structure.
         self.node.merge_sons();
         self.get_threaded()
     }
 
+    /// Whether any descendant has something pending. `false` does not promise
+    /// that a `get` is free, only that no write is waiting to be folded.
+    ///
+    /// Costs one atomic load on a clean subtree, whatever its size.
     pub fn check_children(&self) -> bool {
         self.node.check_children()
     }
 
+    /// Whether this node itself owes its father a delta.
     pub fn check_dirty_bit(&self) -> bool {
         self.node.dirty.load(Ordering::Acquire)
     }

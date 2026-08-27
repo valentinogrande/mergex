@@ -79,7 +79,7 @@ O(1) answer to "has anything changed?" — not with raw speed.
 
 ## How it works
 
-```
+```text
                     ┌─────────────┐
                     │    root     │   get() folds here
                     └──────┬──────┘
@@ -166,7 +166,7 @@ Dropping the last handle to a node only plants a tombstone. It cannot unlink the
 there: the node may still owe its father a delta, and only a merger — walking down
 from above, inside its own fold — is in a position to collect it.
 
-```rust
+```rust,ignore
 impl<T> Drop for Mergex<T> {
     fn drop(&mut self) {
         if self.node.handles.fetch_sub(1, Ordering::AcqRel) == 1 {
@@ -350,7 +350,7 @@ memory.
 
 - **Thread spawn and join sit outside the timed region.** A barrier holds every worker
   on the start line, the clock starts, a second barrier releases when the last worker
-  is done. Harness: `examples/repeat.rs`.
+  is done.
 - **Every configuration is run 15 times, and the whole table repeatedly.** A single run
   on this machine is not reproducible: min-to-max spread reaches 70% under background
   load. The medians are — they agreed within 1% across every pass — which is why
@@ -373,15 +373,6 @@ RUSTFLAGS="--cfg loom" cargo test --release --test loom    # the memory-ordering
 the flag protocol across every interleaving the memory model allows. The second is the
 one that catches ordering bugs — see the third design decision above for why the first
 cannot.
-
-## Benchmarks, reproduced
-
-```sh
-cargo bench                                  # criterion: latency, primitives, read side
-cargo run --release --example repeat         # write throughput, with spread
-cargo run --release --example readers        # concurrent readers, with and without a writer
-cargo run --release --example memory         # live heap bytes per producer
-```
 
 ## Credits
 
