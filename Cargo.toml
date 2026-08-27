@@ -3,4 +3,36 @@ name = "mergex"
 version = "0.1.0"
 edition = "2024"
 
+
 [dependencies]
+
+# Only pulled in for `RUSTFLAGS="--cfg loom" cargo test --test loom`.
+# It has to be a real dependency, not a dev-dependency: src/lib.rs itself is
+# rebuilt on loom's primitives, and integration tests see the lib built
+# without dev-dependencies.
+[target.'cfg(loom)'.dependencies]
+loom = "0.7"
+
+# `loom` is set by hand via RUSTFLAGS, so cargo has to be told it is expected.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(loom)'] }
+
+[dev-dependencies]
+criterion = { version = "0.8.2", features = ["html_reports"] }
+left-right = "0.11.8"
+
+[[bench]]
+name = "mergex"
+harness = false
+
+[[bench]]
+name = "comparison"
+harness = false
+
+[[bench]]
+name = "atomics"
+harness = false
+
+[[bench]]
+name = "read_heavy"
+harness = false

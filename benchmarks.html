@@ -1,0 +1,732 @@
+<title>Mergex Under Load</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@500;600;700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600&display=swap">
+
+<style>
+:root {
+  color-scheme: light;
+  --ground:        #f7f9f8;
+  --panel:         #ffffff;
+  --ink:           #0f1512;
+  --ink-2:         #4c5551;
+  --ink-3:         #7c8681;
+  --rule:          #dfe5e2;
+  --rule-soft:     #edf1ef;
+  --accent:        #2a78d6;
+  --grid:          #e6eae8;
+
+  --s1: #2a78d6;  --s2: #eb6834;  --s3: #1baf7a;  --s4: #eda100;
+  --s5: #e87ba4;  --s6: #008300;  --s7: #4a3aa7;  --s8: #e34948;
+
+  --shadow: 0 1px 2px rgba(15,21,18,.05), 0 8px 24px -16px rgba(15,21,18,.18);
+
+  --step--1: clamp(.76rem, .74rem + .1vw, .82rem);
+  --step-0:  clamp(1rem, .97rem + .14vw, 1.08rem);
+  --step-1:  clamp(1.2rem, 1.13rem + .32vw, 1.4rem);
+  --step-2:  clamp(1.6rem, 1.44rem + .74vw, 2.1rem);
+  --step-3:  clamp(2.3rem, 1.9rem + 1.9vw, 3.5rem);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --ground:    #0e1211;
+    --panel:     #151b19;
+    --ink:       #eef2f0;
+    --ink-2:     #a7b1ac;
+    --ink-3:     #78827d;
+    --rule:      #262e2b;
+    --rule-soft: #1c2321;
+    --accent:    #3987e5;
+    --grid:      #212926;
+    --s1: #3987e5;  --s2: #d95926;  --s3: #199e70;  --s4: #c98500;
+    --s5: #d55181;  --s6: #008300;  --s7: #9085e9;  --s8: #e66767;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --ground:    #0e1211;
+  --panel:     #151b19;
+  --ink:       #eef2f0;
+  --ink-2:     #a7b1ac;
+  --ink-3:     #78827d;
+  --rule:      #262e2b;
+  --rule-soft: #1c2321;
+  --accent:    #3987e5;
+  --grid:      #212926;
+  --s1: #3987e5;  --s2: #d95926;  --s3: #199e70;  --s4: #c98500;
+  --s5: #d55181;  --s6: #008300;  --s7: #9085e9;  --s8: #e66767;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px -18px rgba(0,0,0,.8);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: "Source Serif 4", Georgia, "Times New Roman", serif;
+  font-size: var(--step-0);
+  line-height: 1.62;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 74rem; margin: 0 auto; padding: 0 1.5rem 6rem; }
+
+h1, h2, h3, .eyebrow, .legend, .tile-label, th, .btn, .axis-title {
+  font-family: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
+}
+.mono, td.num, .tile-value, .axis text, code, .chip {
+  font-family: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- masthead ---------- */
+header.masthead {
+  border-bottom: 1px solid var(--rule);
+  padding: 3.5rem 0 2.25rem;
+  display: grid;
+  gap: 1.1rem;
+}
+.eyebrow {
+  font-size: var(--step--1);
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--ink-3);
+  margin: 0;
+}
+h1 {
+  font-size: var(--step-3);
+  font-weight: 700;
+  line-height: .96;
+  letter-spacing: -.02em;
+  margin: 0;
+  text-wrap: balance;
+}
+.deck {
+  margin: 0;
+  max-width: 60ch;
+  font-size: var(--step-1);
+  color: var(--ink-2);
+  text-wrap: pretty;
+}
+.env {
+  display: flex; flex-wrap: wrap; gap: .4rem .9rem;
+  font-size: var(--step--1); color: var(--ink-3);
+  padding-top: .4rem;
+}
+.env span::after { content: " ·"; color: var(--rule); margin-left: .9rem; }
+.env span:last-child::after { content: ""; }
+
+/* ---------- stat tiles ---------- */
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  overflow: hidden;
+  margin: 2.5rem 0 0;
+}
+.tile { background: var(--panel); padding: 1.5rem 1.35rem; display: grid; gap: .3rem; }
+.tile-label {
+  font-size: var(--step--1); letter-spacing: .09em; text-transform: uppercase;
+  color: var(--ink-3); font-weight: 600;
+}
+.tile-value { font-size: var(--step-2); font-weight: 600; line-height: 1.05; letter-spacing: -.02em; }
+.tile-note { font-size: var(--step--1); color: var(--ink-2); line-height: 1.45; }
+
+/* ---------- sections ---------- */
+section { padding-top: 4.25rem; }
+.sec-head { display: grid; gap: .45rem; margin-bottom: 1.5rem; }
+.sec-head .eyebrow { color: var(--accent); }
+h2 { font-size: var(--step-2); font-weight: 700; letter-spacing: -.015em; margin: 0; line-height: 1.08; }
+.lede { margin: 0; max-width: 66ch; color: var(--ink-2); }
+p { max-width: 66ch; text-wrap: pretty; }
+strong { font-weight: 600; color: var(--ink); }
+
+/* ---------- panels & charts ---------- */
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: 6px;
+  padding: 1.35rem 1.35rem 1.1rem;
+  box-shadow: var(--shadow);
+}
+.panel + .panel { margin-top: 1.25rem; }
+.panel-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: .6rem; margin-bottom: .5rem; }
+h3 { font-size: var(--step-0); font-weight: 600; margin: 0; letter-spacing: .01em; }
+.panel-sub { font-size: var(--step--1); color: var(--ink-3); margin: 0; }
+.chart-host { position: relative; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+.axis text { font-size: 11px; fill: var(--ink-3); }
+.axis-title { font-size: 11px; fill: var(--ink-3); letter-spacing: .08em; text-transform: uppercase; font-weight: 600; }
+.gridline { stroke: var(--grid); stroke-width: 1; }
+.axisline { stroke: var(--rule); stroke-width: 1; }
+.endlabel { font-size: 11px; font-weight: 600; font-family: "IBM Plex Mono", monospace; }
+
+.legend { display: flex; flex-wrap: wrap; gap: .35rem 1rem; font-size: var(--step--1); color: var(--ink-2); margin-top: .85rem; }
+.legend b { display: inline-flex; align-items: center; gap: .4rem; font-weight: 500; }
+.swatch { width: 11px; height: 11px; border-radius: 2px; flex: none; }
+.swatch.line { height: 3px; border-radius: 2px; width: 14px; }
+
+/* tooltip */
+.tip {
+  position: absolute; pointer-events: none; opacity: 0; transition: opacity .1s;
+  background: var(--panel); border: 1px solid var(--rule); border-radius: 5px;
+  box-shadow: var(--shadow); padding: .5rem .6rem; font-size: var(--step--1);
+  font-family: "IBM Plex Mono", monospace; white-space: nowrap; z-index: 5;
+  color: var(--ink); line-height: 1.5;
+}
+.tip .tip-h { font-weight: 600; margin-bottom: .3rem; display: block; }
+.tip .row { display: flex; align-items: center; gap: .4rem; justify-content: space-between; }
+.tip .row span:first-child { display: inline-flex; align-items: center; gap: .35rem; }
+
+/* tables */
+details.tableview { margin-top: 1rem; border-top: 1px solid var(--rule-soft); padding-top: .6rem; }
+details.tableview summary {
+  cursor: pointer; font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-size: var(--step--1); color: var(--ink-3); letter-spacing: .06em;
+  text-transform: uppercase; font-weight: 600;
+}
+details.tableview summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.tablescroll { overflow-x: auto; margin-top: .7rem; }
+table { border-collapse: collapse; width: 100%; font-size: var(--step--1); }
+th, td { padding: .38rem .7rem; text-align: right; border-bottom: 1px solid var(--rule-soft); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+thead th { color: var(--ink-3); font-weight: 600; letter-spacing: .05em; text-transform: uppercase; }
+tbody tr:last-child td { border-bottom: 0; }
+td.num { color: var(--ink); }
+.rowkey { display: inline-flex; align-items: center; gap: .45rem; }
+
+/* misc */
+.chip {
+  display: inline-block; font-size: var(--step--1); padding: .08rem .4rem;
+  border: 1px solid var(--rule); border-radius: 3px; color: var(--ink-2);
+  background: var(--rule-soft);
+}
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(19rem, 1fr)); gap: 1.25rem; align-items: start; }
+.note {
+  border-left: 2px solid var(--accent); padding: .1rem 0 .1rem 1rem;
+  color: var(--ink-2); margin: 1.5rem 0; max-width: 64ch;
+}
+footer { margin-top: 5rem; padding-top: 1.5rem; border-top: 1px solid var(--rule); color: var(--ink-3); font-size: var(--step--1); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="masthead">
+  <p class="eyebrow">Rust · concurrent merge tree · criterion</p>
+  <h1>Mergex Under Load</h1>
+  <p class="deck">Every thread writes to its own node. The aggregate is assembled only when someone asks for it. Here is what that costs, and what it buys, measured against seven alternatives — including the one it loses to.</p>
+  <div class="env">
+    <span class="mono">AMD Ryzen 5 PRO 5650U · 12 threads</span>
+    <span class="mono">rustc 1.95.0</span>
+    <span class="mono">criterion 0.8.2</span>
+    <span class="mono">--release</span>
+    <span class="mono">Linux 7.1.4</span>
+  </div>
+</header>
+
+<div class="tiles">
+  <div class="tile">
+    <span class="tile-label">Write throughput · at its peak</span>
+    <span class="tile-value">795 M/s</span>
+    <span class="tile-note">At twelve writers, this machine's hardware thread count — <strong>43×</strong> a shared <code class="mono">Mutex&lt;i64&gt;</code>. It is the only entrant still climbing there.</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Concurrent readers · 8 of them</span>
+    <span class="tile-value">13.7 M/s</span>
+    <span class="tile-note">Down from 91 with one. Reads do not scale — this is the side it loses on, and left-right wins it by 9×.</span>
+  </div>
+  <div class="tile">
+    <span class="tile-label">Memory per live producer</span>
+    <span class="tile-value">240 B</span>
+    <span class="tile-note">30× a bare <code class="mono">i64</code>. A whole node per writer — but retired workers are unlinked, so it tracks the live count.</span>
+  </div>
+</div>
+
+<section id="how">
+  <div class="sec-head">
+    <p class="eyebrow">The shape</p>
+    <h2>What it actually does</h2>
+  </div>
+  <div class="two-col">
+    <div>
+      <p>A <code class="mono">Mergex&lt;T&gt;</code> is a handle to a node in a tree. <code class="mono">copy()</code> registers a son and hands back its handle; move that into a thread and it writes only to its own cell. Nothing is shared on the write path.</p>
+      <p>A write also raises a <strong>dirty</strong> flag, then walks up flagging each ancestor's <strong>subtree_dirty</strong> — stopping at the first one already raised, so a burst of writes costs one walk, not one per write.</p>
+      <p>When someone calls <code class="mono">get()</code>, the root folds every dirty descendant into itself with the merge function the developer supplied at construction, deepest first. If nothing is dirty, that flag turns the whole sweep into a single atomic load.</p>
+    </div>
+    <div class="panel">
+      <div class="panel-head"><h3>One root, three writers</h3></div>
+      <svg viewBox="0 0 360 210" role="img" aria-label="Tree diagram: a root node with three son nodes, two marked dirty, merging upward.">
+        <defs>
+          <marker id="arw" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0.5 1 L6.5 4 L0.5 7" fill="none" stroke="var(--ink-3)" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </marker>
+        </defs>
+        <g stroke="var(--ink-3)" stroke-width="1.3" fill="none" marker-end="url(#arw)" opacity=".75">
+          <path d="M70 150 C70 118, 180 122, 180 84"/>
+          <path d="M180 150 L180 92"/>
+          <path d="M290 150 C290 118, 180 122, 180 84"/>
+        </g>
+        <rect x="120" y="34" width="120" height="42" rx="5" fill="var(--panel)" stroke="var(--s1)" stroke-width="1.6"/>
+        <text x="180" y="52" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="var(--ink)">root</text>
+        <text x="180" y="67" text-anchor="middle" class="mono" font-size="10.5" fill="var(--ink-3)">get() folds here</text>
+
+        <rect x="20" y="152" width="100" height="42" rx="5" fill="var(--panel)" stroke="var(--s2)" stroke-width="1.6"/>
+        <text x="70" y="170" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="var(--ink)">son A</text>
+        <text x="70" y="185" text-anchor="middle" class="mono" font-size="10.5" fill="var(--s2)">dirty</text>
+
+        <rect x="130" y="152" width="100" height="42" rx="5" fill="var(--panel)" stroke="var(--rule)" stroke-width="1.6"/>
+        <text x="180" y="170" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="var(--ink)">son B</text>
+        <text x="180" y="185" text-anchor="middle" class="mono" font-size="10.5" fill="var(--ink-3)">clean</text>
+
+        <rect x="240" y="152" width="100" height="42" rx="5" fill="var(--panel)" stroke="var(--s2)" stroke-width="1.6"/>
+        <text x="290" y="170" text-anchor="middle" class="mono" font-size="12" font-weight="600" fill="var(--ink)">son C</text>
+        <text x="290" y="185" text-anchor="middle" class="mono" font-size="10.5" fill="var(--s2)">dirty</text>
+
+        <text x="180" y="119" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-3)">merge(&amp;mut father, &amp;son)</text>
+        <text x="180" y="18" text-anchor="middle" class="mono" font-size="10" fill="var(--ink-3)">subtree_dirty = true</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<section id="writes">
+  <div class="sec-head">
+    <p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;text-transform:none;letter-spacing:0">write_throughput</p>
+    <h2>Writes are the whole point</h2>
+    <p class="lede">N threads, 20,000 writes each, then one read of the aggregate. Higher is better. The machine has twelve hardware threads, so the sweep runs past it into oversubscription. The shared-cell designs all peak at <em>one</em> thread and fall from there; the per-writer designs climb.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Throughput vs thread count</h3>
+      <p class="panel-sub">million writes per second</p>
+    </div>
+    <div class="chart-host" id="host-write"></div>
+    <div class="legend" id="legend-write"></div>
+    <details class="tableview"><summary>Table view</summary><div class="tablescroll" id="table-write"></div></details>
+  </div>
+
+  <p>The split is clean and it is not about lock quality. <strong>Every design that funnels writes through one cell gets slower as threads are added</strong> — <code class="mono">Mutex</code> 140.5 → 21.8, <code class="mono">RwLock</code> 132.9 → 15.6, even a lock-free <code class="mono">AtomicI64</code> 291.5 → 52.1, because <code class="mono">fetch_add</code> still serialises on one cache line. Mergex and cache-line-padded sharding both climb instead, because no two writers touch the same line.</p>
+
+  <div class="note"><strong>Unpadded sharding is the trap.</strong> One <code class="mono">Mutex&lt;i64&gt;</code> per thread in a <code class="mono">Vec</code> looks like the same idea and collapses to 39.1 M/s — 27× slower than the padded version. Adjacent shards land on the same 64-byte line, so the threads fight over cache even though they never share a lock. Mergex pays <code class="mono">#[repr(align(64))]</code> on its node for exactly this reason: without it the write benchmark is bimodal, swinging 3× on allocator luck alone.</div>
+
+  <p><strong>Past the core count nothing collapses — it flattens.</strong> <code class="mono">Mutex</code> sits at 18.4 from twelve threads onward, <code class="mono">RwLock</code> at about 11.5, left-right at 8. They were already fully serialised at eight, so adding threads changes nothing: the queue is the queue. There is no lock convoy to see.</p>
+
+  <p><strong>mergex peaks at twelve, not eight</strong> — 671 to 795 — and is the only entrant still climbing at the machine's physical limit, while padded sharding had already topped out. It also degrades best when oversubscribed: at 32 threads each structure holds mergex 91%, <code class="mono">sharded_padded</code> 85%, <code class="mono">plain_local</code> 70% of its own peak. With no shared lock, a thread descheduled mid-write blocks nobody. And the margin over a shared <code class="mono">Mutex</code> <em>grows</em> with thread count: 32× at eight, 43× at twelve, 41× at thirty-two.</p>
+
+  <p><strong>And the honest ceiling on the win.</strong> Cache-line-padded sharding still beats mergex outright — 1018 against 795 at their respective peaks, in half the memory. If a flat one-level fold is all you need, hand-roll it. Mergex earns its keep with the tree: arbitrary depth, coalescing writes, self-cleaning membership, and an O(1) answer to "has anything changed?"</p>
+
+  <div class="note"><strong>Two things in that chart are artefacts, not properties.</strong> Every series dips at 16 threads and recovers at 24 — 16 does not divide 12 evenly while 24 is exactly two full passes, so that is the scheduler, not the structures. And <code class="mono">sharded</code> is alone in improving with more threads, 21.4 at two to 79.9 at sixteen; the likely reason is that oversubscription leaves fewer threads genuinely simultaneous on a shared cache line, easing its false sharing. That one is a hypothesis, not a measurement.</div>
+</section>
+
+<section id="reads">
+  <div class="sec-head">
+    <p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;text-transform:none;letter-spacing:0">readers</p>
+    <h2>Reads are where it loses</h2>
+    <p class="lede">A single reader on a quiet tree is the flattering measurement, and it is the one that hid the problem for most of this investigation. Add readers, or add a writer beside them, and the picture inverts.</p>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Concurrent readers, with a writer running alongside</h3>
+      <p class="panel-sub">million reads per second — higher is better</p>
+    </div>
+    <div class="chart-host" id="host-readers"></div>
+    <div class="legend" id="legend-readers"></div>
+    <details class="tableview"><summary>Table view</summary><div class="tablescroll" id="table-readers"></div></details>
+  </div>
+
+  <p><strong>mergex goes 3.8 → 4.8 million reads per second and stays there; left-right goes 7.7 → 119.1.</strong> The reason is structural, not a missing optimisation: <code class="mono">get()</code> takes the root's lock, so readers queue behind each other and behind the writer. left-right keeps two copies and swaps them on publish, so its readers are wait-free and never touch what the writer is touching. They are built for opposite problems, and each loses badly on the other's ground — left-right manages 10.2 million <em>writes</em> per second at eight writers, the slowest entry in the whole comparison.</p>
+
+  <p>If your workload is read-heavy, left-right is the right structure and this one is not. That sentence is the most useful thing on this page.</p>
+
+  <div class="two-col">
+    <div class="panel">
+      <div class="panel-head">
+        <h3>A single worker reads its own value</h3>
+        <p class="panel-sub">nanoseconds, uncontended</p>
+      </div>
+      <div class="chart-host" id="host-local"></div>
+      <details class="tableview"><summary>Table view</summary><div class="tablescroll" id="table-local"></div></details>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <h3>A single reader asks for the aggregate</h3>
+        <p class="panel-sub">nanoseconds, log scale, nothing dirty</p>
+      </div>
+      <div class="chart-host" id="host-global"></div>
+      <div class="legend" id="legend-global"></div>
+      <details class="tableview"><summary>Table view</summary><div class="tablescroll" id="table-global"></div></details>
+    </div>
+  </div>
+
+  <p>These two are the flattering pair, and they are real as far as they go. <code class="mono">get_threaded()</code> costs 7.10 ns, indistinguishable from holding a <code class="mono">Mutex&lt;i64&gt;</code> yourself. The single-reader aggregate is <strong>10.87 ns and flat</strong> from 8 producers to 512, because <code class="mono">subtree_dirty</code> answers "is there work?" in one atomic load — while hand-rolled sharding must sum every shard and climbs to 3.65 µs, 336× worse. But <em>single reader</em> is doing a lot of work in that sentence. The chart above is the one that matters for a real workload.</p>
+</section>
+
+<section id="memory">
+  <div class="sec-head">
+    <p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;text-transform:none;letter-spacing:0">examples/memory.rs</p>
+    <h2>What it costs in RAM</h2>
+    <p class="lede">Live heap bytes, counted by a <code class="mono">GlobalAlloc</code> wrapper rather than estimated from <code class="mono">size_of</code>. Measured at 8, 64 and 512 producers; the slope is the marginal cost of one more writer.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Bytes per producer</h3>
+      <p class="panel-sub">marginal, from the 8 → 512 slope</p>
+    </div>
+    <div class="chart-host" id="host-mem"></div>
+    <details class="tableview"><summary>Table view</summary><div class="tablescroll" id="table-mem"></div></details>
+  </div>
+  <p>A mergex node is <strong>240 bytes</strong>: an <code class="mono">Arc</code> header, a <code class="mono">Mutex&lt;T&gt;</code>, a <code class="mono">Mutex&lt;Vec&lt;Arc&lt;Node&gt;&gt;&gt;</code> for its sons, a handle count, two flags, <code class="mono">Arc</code>s to the merge function and the identity, and the vector of ancestor flags — then rounds up to a cache line. That is 30× a bare <code class="mono">i64</code> and just under 2× a cache-line-padded shard. Crucially it is the cost of a <em>live</em> producer: a worker that finishes and drops its handle is folded and unlinked by the next merge, so this figure tracks the live count rather than everything the process has ever spawned. The shared-cell designs are flat at 32–48 bytes because they have nothing per producer; they pay for concurrency in contention instead of memory.</p>
+</section>
+
+<section id="tradeoff">
+  <div class="sec-head">
+    <p class="eyebrow" style="font-family:'IBM Plex Mono',monospace;text-transform:none;letter-spacing:0">the plane</p>
+    <h2>Memory bought, throughput delivered</h2>
+    <p class="lede">Both axes at once. Up and to the left is free lunch; up and to the right is a deal you might take.</p>
+  </div>
+  <div class="panel">
+    <div class="panel-head">
+      <h3>Peak write throughput vs bytes per producer</h3>
+      <p class="panel-sub">each structure at its own best thread count</p>
+    </div>
+    <div class="chart-host" id="host-plane"></div>
+    <details class="tableview"><summary>Table view</summary><div class="tablescroll" id="table-plane"></div></details>
+  </div>
+  <p>Plain per-thread locals win outright and that is the honest ceiling — though it is also the least reproducible entrant here, because twenty thousand additions take a few microseconds and scheduler skew dominates. What they do not give you is aggregation: you fold them yourself, you cannot ask for a partial result mid-run, and there is no tree. The interesting neighbour is <code class="mono">sharded_padded</code>, up and to the left of mergex: faster, half the memory, and the thing to reach for when one flat level is all you need.</p>
+</section>
+
+<section id="method">
+  <div class="sec-head">
+    <p class="eyebrow">Method</p>
+    <h2>How to read these numbers</h2>
+  </div>
+  <p><strong>The semantics are not identical, and cannot be.</strong> Mergex, sharding and plain locals write to a slot the thread owns. <code class="mono">Mutex</code>, <code class="mono">RwLock</code> and <code class="mono">AtomicI64</code> read-modify-write one shared cell, because that is the only way a single cell keeps a running aggregate. Comparing them is the point — the question is what a running total costs — but they are not the same operation.</p>
+  <p><strong>Thread spawn is inside the timed region</strong> for every entrant in the write benchmark, at 20,000 operations per thread, so it is amortised to under a percent and it is the same tax for all of them.</p>
+  <p><strong>Sample sizes are criterion defaults</strong> (100 samples) except the write benchmark, which uses 20 because each iteration spawns threads. Every figure quoted here is a mean with a 95% confidence interval inside ±1% unless stated.</p>
+  <p><strong>Two benchmark groups were rewritten</strong> after an earlier version of this page quoted them. <code class="mono">copy</code> and <code class="mono">merge_dirty</code> used criterion's <code class="mono">iter_batched</code>, which counts input teardown inside the timed region, so their figures scaled with the cost of dropping the tree rather than the operation. They now defer teardown and start the clock by hand; the <code class="mono">Instant</code> pair that costs is measured separately and subtracted.</p>
+
+  <p><strong>An earlier version of this page said reads were a strength.</strong> That conclusion came from a single reader on a quiet tree, which is the best case and not a realistic one. Measuring N concurrent readers, with and without a writer alongside, reversed it. The reader-scaling chart is the correction.</p>
+</section>
+
+<footer>
+  <p>Measured on a single machine, one run per configuration. Reproduce with <code class="mono">cargo bench</code> and <code class="mono">cargo run --release --example memory</code>.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  const SERIES = {
+    plain_local:    { label: "plain_local",    color: "var(--s2)" },
+    mergex:         { label: "mergex",         color: "var(--s1)" },
+    sharded_padded: { label: "sharded_padded", color: "var(--s3)" },
+    sharded:        { label: "sharded",        color: "var(--s4)" },
+    Atomic:         { label: "AtomicI64",      color: "var(--s5)" },
+    Mutex:          { label: "Mutex",          color: "var(--s6)" },
+    RwLock:         { label: "RwLock",         color: "var(--s7)" },
+    left_right:     { label: "left-right",     color: "var(--s8)" }
+  };
+
+  const THREADS = [1, 2, 4, 8, 12, 16, 24, 32];
+  const WRITE = {
+    plain_local:    [582.8, 1242.6, 2451.6, 2546.2, 2350.8, 1575.2, 1941.3, 1784.9],
+    sharded_padded: [142.1, 274.3, 547.8, 1018.0, 1010.2, 775.9, 908.5, 866.0],
+    mergex:         [132.7, 271.2, 535.3, 671.3, 795.0, 649.8, 761.8, 725.4],
+    Atomic:         [297.3, 63.2, 57.6, 51.3, 48.8, 48.4, 48.0, 47.7],
+    sharded:        [142.3, 21.4, 29.3, 40.1, 58.9, 79.9, 69.6, 74.4],
+    Mutex:          [140.7, 41.8, 29.3, 21.1, 18.4, 18.4, 18.4, 17.8],
+    RwLock:         [151.5, 39.7, 29.0, 15.0, 11.1, 11.6, 11.6, 12.0],
+    left_right:     [90.1, 16.8, 13.2, 10.2, 8.1, 8.1, 7.9, 7.9]
+  };
+
+  const READERS = [1, 2, 4, 8];
+  const READ_WRITER = {
+    Atomic:     [259.4, 310.1, 590.7, 746.0],
+    left_right: [7.7, 17.3, 45.9, 119.1],
+    Mutex:      [16.8, 24.9, 19.9, 17.6],
+    RwLock:     [15.4, 20.6, 9.6, 4.0],
+    mergex:     [3.8, 14.3, 6.4, 4.8]
+  };
+
+  const PRODUCERS = [8, 64, 512];
+  const GLOBAL = {
+    sharded:    [56.81, 456.17, 3650],
+    left_right: [12.10, 12.11, 12.12],
+    mergex:     [10.92, 10.87, 10.87],
+    Mutex:      [7.10, 7.10, 7.10],
+    Atomic:     [0.89, 0.89, 0.89]
+  };
+
+  const LOCAL = [
+    ["left-right", 12.05, "var(--s8)"],
+    ["RwLock", 7.86, "var(--s7)"],
+    ["mergex", 7.10, "var(--s1)"],
+    ["Mutex", 7.11, "var(--s6)"],
+    ["AtomicI64", 0.89, "var(--s5)"]
+  ];
+
+  const MEM = [
+    ["mergex", 240, "var(--s1)"],
+    ["sharded_padded", 128, "var(--s3)"],
+    ["sharded", 16, "var(--s4)"],
+    ["plain_local", 8, "var(--s2)"],
+    ["RwLock", 0, "var(--s7)"],
+    ["Mutex", 0, "var(--s6)"],
+    ["AtomicI64", 0, "var(--s5)"]
+  ];
+
+  const PLANE = [
+    ["plain_local", 8, 2546.2],
+    ["sharded_padded", 128, 1018.0],
+    ["mergex", 240, 795.0],
+    ["sharded", 16, 79.9],
+    ["Atomic", 0, 52.1],
+    ["Mutex", 0, 21.1],
+    ["RwLock", 0, 15.6]
+  ];
+
+  const NS = "http://www.w3.org/2000/svg";
+  const el = (n, a) => {
+    const e = document.createElementNS(NS, n);
+    for (const k in a) e.setAttribute(k, a[k]);
+    return e;
+  };
+  const txt = (e, s) => { e.appendChild(document.createTextNode(s)); return e; };
+
+  function tooltip(host) {
+    const t = document.createElement("div");
+    t.className = "tip";
+    host.appendChild(t);
+    return t;
+  }
+
+  /* ---------- line chart ---------- */
+  function lineChart(hostId, legendId, tableId, opts) {
+    const host = document.getElementById(hostId);
+    const W = 780, H = opts.height || 400;
+    const M = { t: 16, r: opts.padRight || 96, b: 46, l: 58 };
+    const iw = W - M.l - M.r, ih = H - M.t - M.b;
+
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.aria });
+    host.appendChild(svg);
+    const tip = tooltip(host);
+
+    const xs = opts.x;
+    const xPos = i => M.l + (xs.length === 1 ? iw / 2 : (iw * i) / (xs.length - 1));
+
+    const vals = Object.values(opts.data).flat();
+    const logY = !!opts.logY;
+    const yMin = logY ? Math.pow(10, Math.floor(Math.log10(Math.min(...vals)))) : 0;
+    const yMax = logY ? Math.pow(10, Math.ceil(Math.log10(Math.max(...vals)))) : Math.max(...vals) * 1.08;
+    const yPos = v => {
+      if (logY) {
+        const a = Math.log10(Math.max(v, yMin)), lo = Math.log10(yMin), hi = Math.log10(yMax);
+        return M.t + ih - ((a - lo) / (hi - lo)) * ih;
+      }
+      return M.t + ih - (v / yMax) * ih;
+    };
+
+    const ticks = [];
+    if (logY) {
+      for (let p = Math.log10(yMin); p <= Math.log10(yMax) + 1e-9; p++) ticks.push(Math.pow(10, p));
+    } else {
+      const step = Math.pow(10, Math.floor(Math.log10(yMax))) / 2;
+      for (let v = 0; v <= yMax; v += step) ticks.push(v);
+    }
+
+    const g = el("g", { class: "axis" });
+    svg.appendChild(g);
+    ticks.forEach(v => {
+      const y = yPos(v);
+      g.appendChild(el("line", { class: "gridline", x1: M.l, x2: M.l + iw, y1: y, y2: y }));
+      g.appendChild(txt(el("text", { x: M.l - 10, y: y + 4, "text-anchor": "end" }), opts.yTick(v)));
+    });
+    g.appendChild(el("line", { class: "axisline", x1: M.l, x2: M.l + iw, y1: M.t + ih, y2: M.t + ih }));
+    xs.forEach((v, i) => {
+      g.appendChild(txt(el("text", { x: xPos(i), y: M.t + ih + 21, "text-anchor": "middle" }), String(v)));
+    });
+    g.appendChild(txt(el("text", { x: M.l + iw / 2, y: H - 6, "text-anchor": "middle", class: "axis-title" }), opts.xTitle));
+    g.appendChild(txt(el("text", { x: M.l - 44, y: M.t - 4, class: "axis-title" }), opts.yTitle));
+
+    const keys = Object.keys(opts.data);
+    keys.forEach(k => {
+      const s = SERIES[k], d = opts.data[k];
+      const path = d.map((v, i) => `${i ? "L" : "M"}${xPos(i)} ${yPos(v)}`).join(" ");
+      svg.appendChild(el("path", { d: path, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      d.forEach((v, i) => {
+        svg.appendChild(el("circle", { cx: xPos(i), cy: yPos(v), r: 4, fill: s.color, stroke: "var(--panel)", "stroke-width": 2 }));
+      });
+      const last = d.length - 1;
+      svg.appendChild(txt(el("text", {
+        x: xPos(last) + 11, y: yPos(d[last]) + 4, class: "endlabel", fill: s.color
+      }), s.label));
+    });
+
+    /* crosshair */
+    const cross = el("line", { class: "axisline", y1: M.t, y2: M.t + ih, opacity: 0, "stroke-dasharray": "3 3" });
+    svg.appendChild(cross);
+    const hit = el("rect", { x: M.l, y: M.t, width: iw, height: ih, fill: "transparent" });
+    svg.appendChild(hit);
+
+    function move(ev) {
+      const r = svg.getBoundingClientRect();
+      const px = ((ev.clientX - r.left) / r.width) * W;
+      let idx = 0, best = Infinity;
+      xs.forEach((_, i) => { const d = Math.abs(xPos(i) - px); if (d < best) { best = d; idx = i; } });
+      cross.setAttribute("x1", xPos(idx)); cross.setAttribute("x2", xPos(idx));
+      cross.setAttribute("opacity", .6);
+      let html = `<span class="tip-h">${opts.xTitle}: ${xs[idx]}</span>`;
+      keys.slice().sort((a, b) => opts.data[b][idx] - opts.data[a][idx]).forEach(k => {
+        html += `<span class="row"><span><i class="swatch" style="background:${SERIES[k].color}"></i>${SERIES[k].label}</span><span>${opts.fmt(opts.data[k][idx])}</span></span>`;
+      });
+      tip.innerHTML = html;
+      tip.style.opacity = 1;
+      const hr = host.getBoundingClientRect();
+      const tw = tip.offsetWidth;
+      let left = ev.clientX - hr.left + 14;
+      if (left + tw > hr.width) left = ev.clientX - hr.left - tw - 14;
+      tip.style.left = Math.max(0, left) + "px";
+      tip.style.top = Math.min(hr.height - tip.offsetHeight, Math.max(0, ev.clientY - hr.top - 10)) + "px";
+    }
+    hit.addEventListener("mousemove", move);
+    hit.addEventListener("mouseleave", () => { tip.style.opacity = 0; cross.setAttribute("opacity", 0); });
+
+    if (legendId) {
+      const lg = document.getElementById(legendId);
+      keys.forEach(k => {
+        const b = document.createElement("b");
+        b.innerHTML = `<i class="swatch line" style="background:${SERIES[k].color}"></i>${SERIES[k].label}`;
+        lg.appendChild(b);
+      });
+    }
+
+    if (tableId) {
+      const rows = keys.map(k =>
+        `<tr><td><span class="rowkey"><i class="swatch" style="background:${SERIES[k].color}"></i>${SERIES[k].label}</span></td>` +
+        opts.data[k].map(v => `<td class="num">${opts.fmt(v)}</td>`).join("") + "</tr>").join("");
+      document.getElementById(tableId).innerHTML =
+        `<table><thead><tr><th>${opts.rowTitle}</th>${xs.map(v => `<th>${v}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table>`;
+    }
+  }
+
+  /* ---------- horizontal bars ---------- */
+  function barChart(hostId, tableId, data, opts) {
+    const host = document.getElementById(hostId);
+    const rowH = 34, W = 560, M = { t: 10, r: 78, b: 30, l: 118 };
+    const H = M.t + M.b + data.length * rowH;
+    const iw = W - M.l - M.r;
+    const max = Math.max(...data.map(d => d[1])) || 1;
+
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": opts.aria });
+    host.appendChild(svg);
+    const g = el("g", { class: "axis" });
+    svg.appendChild(g);
+
+    data.forEach((d, i) => {
+      const y = M.t + i * rowH + 6;
+      const w = Math.max((d[1] / max) * iw, d[1] > 0 ? 3 : 0);
+      g.appendChild(txt(el("text", { x: M.l - 12, y: y + 15, "text-anchor": "end" }), d[0]));
+      if (w > 0) svg.appendChild(el("rect", { x: M.l, y: y + 3, width: w, height: 17, rx: 4, fill: d[2] }));
+      g.appendChild(txt(el("text", { x: M.l + w + 9, y: y + 16, fill: "var(--ink-2)" }), opts.fmt(d[1])));
+    });
+    g.appendChild(el("line", { class: "axisline", x1: M.l, x2: M.l, y1: M.t, y2: H - M.b + 4 }));
+    g.appendChild(txt(el("text", { x: M.l, y: H - 6, class: "axis-title" }), opts.xTitle));
+
+    if (tableId) {
+      document.getElementById(tableId).innerHTML =
+        `<table><thead><tr><th>${opts.rowTitle}</th><th>${opts.colTitle}</th></tr></thead><tbody>` +
+        data.map(d => `<tr><td><span class="rowkey"><i class="swatch" style="background:${d[2]}"></i>${d[0]}</span></td><td class="num">${opts.fmt(d[1])}</td></tr>`).join("") +
+        "</tbody></table>";
+    }
+  }
+
+  /* ---------- scatter ---------- */
+  function scatter(hostId, tableId, data) {
+    const host = document.getElementById(hostId);
+    const W = 780, H = 400, M = { t: 22, r: 30, b: 48, l: 60 };
+    const iw = W - M.l - M.r, ih = H - M.t - M.b;
+    const xMax = 200, yMax = 800;
+    const xp = v => M.l + (v / xMax) * iw;
+    const yp = v => M.t + ih - (v / yMax) * ih;
+
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Scatter of 8-thread write throughput against bytes of memory per producer." });
+    host.appendChild(svg);
+    const g = el("g", { class: "axis" });
+    svg.appendChild(g);
+
+    for (let v = 0; v <= yMax; v += 200) {
+      g.appendChild(el("line", { class: "gridline", x1: M.l, x2: M.l + iw, y1: yp(v), y2: yp(v) }));
+      g.appendChild(txt(el("text", { x: M.l - 10, y: yp(v) + 4, "text-anchor": "end" }), String(v)));
+    }
+    for (let v = 0; v <= xMax; v += 40) {
+      g.appendChild(txt(el("text", { x: xp(v), y: M.t + ih + 21, "text-anchor": "middle" }), String(v)));
+    }
+    g.appendChild(el("line", { class: "axisline", x1: M.l, x2: M.l + iw, y1: M.t + ih, y2: M.t + ih }));
+    g.appendChild(txt(el("text", { x: M.l + iw / 2, y: H - 6, "text-anchor": "middle", class: "axis-title" }), "bytes per producer"));
+    g.appendChild(txt(el("text", { x: M.l - 46, y: M.t - 6, class: "axis-title" }), "M writes/s"));
+
+    data.forEach(([name, x, y]) => {
+      svg.appendChild(el("circle", { cx: xp(x), cy: yp(y), r: 6, fill: "var(--accent)", stroke: "var(--panel)", "stroke-width": 2 }));
+      const flip = x > 150;
+      g.appendChild(txt(el("text", {
+        x: xp(x) + (flip ? -12 : 12), y: yp(y) + 4,
+        "text-anchor": flip ? "end" : "start",
+        fill: "var(--ink)", "font-family": "IBM Plex Mono, monospace", "font-weight": 600
+      }), name));
+    });
+
+    document.getElementById(tableId).innerHTML =
+      `<table><thead><tr><th>structure</th><th>bytes/producer</th><th>M writes/s @ 8 threads</th></tr></thead><tbody>` +
+      data.map(d => `<tr><td>${d[0]}</td><td class="num">${d[1]}</td><td class="num">${d[2].toFixed(1)}</td></tr>`).join("") +
+      "</tbody></table>";
+  }
+
+  lineChart("host-write", "legend-write", "table-write", {
+    x: THREADS, data: WRITE, logY: false,
+    xTitle: "threads", yTitle: "M writes/s", rowTitle: "structure",
+    fmt: v => v.toFixed(1), yTick: v => String(Math.round(v)),
+    aria: "Line chart of write throughput against thread count for seven structures."
+  });
+
+  lineChart("host-global", "legend-global", "table-global", {
+    x: PRODUCERS, data: GLOBAL, logY: true, height: 330, padRight: 108,
+    xTitle: "producers", yTitle: "ns", rowTitle: "structure",
+    fmt: v => v >= 1000 ? (v / 1000).toFixed(2) + " µs" : v.toFixed(2) + " ns",
+    yTick: v => v >= 1000 ? (v / 1000) + "µs" : v + "ns",
+    aria: "Log-scale line chart of aggregate read latency against producer count."
+  });
+
+  lineChart("host-readers", "legend-readers", "table-readers", {
+    x: READERS, data: READ_WRITER, logY: true, padRight: 104,
+    xTitle: "readers", yTitle: "M reads/s", rowTitle: "structure",
+    fmt: v => v.toFixed(1), yTick: v => String(v),
+    aria: "Log-scale line chart of concurrent read throughput against reader count, with one writer running."
+  });
+
+  barChart("host-local", "table-local", LOCAL, {
+    fmt: v => v.toFixed(2) + " ns", xTitle: "nanoseconds",
+    rowTitle: "structure", colTitle: "latency",
+    aria: "Bar chart of uncontended local read latency."
+  });
+
+  barChart("host-mem", "table-mem", MEM, {
+    fmt: v => v + " B", xTitle: "bytes per producer",
+    rowTitle: "structure", colTitle: "bytes/producer",
+    aria: "Bar chart of marginal memory cost per producer."
+  });
+
+  scatter("host-plane", "table-plane", PLANE);
+})();
+</script>
