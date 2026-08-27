@@ -376,5 +376,6 @@ cannot.
 
 ## Credits
 
-The benchmark suite (`benches/`), the measurement harnesses (`examples/`), the source
-comments and documentation, and this README were written by Claude Code.
+The tests (`tests/`, and the unit tests in `src/lib.rs`), the benchmark suite
+(`benches/`), the measurement harnesses (`examples/`), the source comments and
+documentation, and this README were written by Claude Code.
