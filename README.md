@@ -122,10 +122,13 @@ reader who recognises them will recognise them in about ten seconds anyway.
 `LongAdder` stripes a counter across padded cells, a thread hashes to one, and `sum()`
 walks them all — contention-free writes paid for with an O(cells) read, which is the
 same bargain this crate makes. `LongAccumulator` is the same machinery with a
-caller-supplied binary operator and identity, and its documentation already says what
-the contract here says: the fold order is unspecified, so the operator has to be
-associative and commutative. So "a `LongAdder` generalised to a user-supplied monoid"
-is not the difference. That already exists, and it is in the JDK.
+caller-supplied binary operator and an identity, and its documentation draws exactly
+the line the contract above draws — *"the order of accumulation within or across
+threads is not guaranteed and cannot be depended upon, so this class is only
+applicable to functions for which the order of accumulation does not matter"*. Its own
+worked example is `Long::max` with `Long.MIN_VALUE` as the identity. So "a `LongAdder`
+generalised to a user-supplied monoid" is not the difference here. That already
+exists, and it has been in the JDK since 2014.
 
 **Combining trees** (software combining, Yew/Tzeng/Lawrie 1987 and Goodman/Vernon/Woest
 1989; textbook treatment in Herlihy and Shavit, *The Art of Multiprocessor
