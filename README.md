@@ -3,6 +3,12 @@
 A concurrent merge tree. Every thread writes to a node it owns; the aggregate is
 assembled only when someone asks for it.
 
+> **This is an educational project.** It works and it is tested — the memory ordering
+> is model-checked with `loom`, and every number below was measured rather than
+> estimated — but it was built to learn how one of these behaves under contention, not
+> because the ecosystem was missing it. The comparison section says plainly what beats
+> it and by how much. Read that before depending on it.
+
 ```rust
 use mergex::Mergex;
 
@@ -106,6 +112,69 @@ Without it this crate's own write benchmark is bimodal, swinging 3x on allocator
 
 If you take one thing from this comparison, take that: for per-thread accumulation, the
 padding decides more than the data structure does.
+
+## Prior art
+
+None of this is new, and the parts that are borrowed are worth naming, because a
+reader who recognises them will recognise them in about ten seconds anyway.
+
+**[`LongAdder` and `LongAccumulator`][ja]** (Doug Lea, JDK 8) are the direct ancestors.
+`LongAdder` stripes a counter across padded cells, a thread hashes to one, and `sum()`
+walks them all — contention-free writes paid for with an O(cells) read, which is the
+same bargain this crate makes. `LongAccumulator` is the same machinery with a
+caller-supplied binary operator and identity, and its documentation already says what
+the contract here says: the fold order is unspecified, so the operator has to be
+associative and commutative. So "a `LongAdder` generalised to a user-supplied monoid"
+is not the difference. That already exists, and it is in the JDK.
+
+**Combining trees** (software combining, Yew/Tzeng/Lawrie 1987 and Goodman/Vernon/Woest
+1989; textbook treatment in Herlihy and Shavit, *The Art of Multiprocessor
+Programming*, ch. 12) are where the tree shape comes from. The mechanism is different,
+though, and the name is a little misleading here. A combining tree combines operations
+*in flight*: threads rendezvous at interior nodes, one of them carries the combined
+operation onward, and results are distributed back down. It is synchronous, and it
+exists to relieve contention on one hot location. Nothing rendezvouses in this crate.
+Nodes are durable per-writer slots, nobody waits for anybody, and the folding is
+deferred entirely to whoever reads. It is closer to a reduction tree that happens to
+be persistent than to a combining tree.
+
+**Delta-state CRDTs** are the closest match for the contract. A state-based CRDT
+([CvRDT][crdt]; Shapiro, Preguiça, Baquero, Zawirski, 2011) needs a join-semilattice —
+merge associative, commutative, *and idempotent*. This crate needs the first two and
+not the third, because a fold takes the son's delta and leaves the identity behind, so
+each delta is folded exactly once. That is the [delta-state][dcrdt] variant (Almeida,
+Shoker, Baquero, 2015): ship what changed, not the whole state.
+
+Worth being clear that this is a downgrade in robustness, not an upgrade. A CvRDT can
+merge the same state twice and nothing happens. Here, folding the same delta twice is
+a wrong answer, and it was a real bug in this crate: the fold used to clone the son's
+value out and leave it in place, so `update(|x| *x += 1)` twice with a `get()` in
+between landed as `+1` and then `+2`. The identity exists to close that hole, and the
+"reset to identity on fold" rule in the contract above is the fix, not a flourish.
+
+**In Rust**, [`thread_local`][tl] is the flat version of this idea and is what
+`tracing-subscriber` and the metrics crates already do: a slot per thread, swept on
+read. [left-right][lr] sits at the opposite corner — one writer, wait-free readers.
+Folly's `ThreadCachedInt` is the same family in C++.
+
+### So what is actually different
+
+Two things, and neither is a new primitive:
+
+- **`T` is arbitrary**, not a machine word. `LongAccumulator` folds `long`s. This folds
+  whatever forms a commutative monoid — a `HashMap`, a sketch, a set.
+- **It is a tree, not a row.** Interior nodes hold real partial results, so an aggregate
+  can be read at any depth: per-core, per-socket, per-scope. `LongAdder`,
+  `LongAccumulator` and `thread_local` give you the total or nothing.
+
+The O(1) "has anything changed?" check falls out of the tree rather than being a third
+idea. If neither of those two matters to you, the [section above](#is-this-the-right-tool)
+already named the faster things to use instead.
+
+[ja]: https://docs.oracle.com/javase/8/docs/api/java/util/concurrent/atomic/LongAccumulator.html
+[crdt]: https://inria.hal.science/inria-00555588
+[dcrdt]: https://arxiv.org/abs/1603.01529
+
 
 ## How it works
 

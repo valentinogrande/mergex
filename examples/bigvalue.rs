@@ -146,7 +146,11 @@ fn main() {
                         // the workers are joined, so this is the only handle left;
                         // consuming it avoids needing T: Sync just to aggregate
                         let mut agg = Map::new();
-                        for cell in Arc::try_unwrap(tls).ok().expect("workers joined") {
+                        for cell in match Arc::try_unwrap(tls) {
+                            Ok(t) => t,
+                            // ThreadLocal is not Debug, so no expect() here
+                            Err(_) => unreachable!("the workers are joined"),
+                        } {
                             fold(&mut agg, &cell.into_inner());
                         }
                         black_box(agg.len());
@@ -165,7 +169,11 @@ fn main() {
                         // the workers are joined, so this is the only handle left;
                         // consuming it avoids needing T: Sync just to aggregate
                         let mut agg = Map::new();
-                        for cell in Arc::try_unwrap(tls).ok().expect("workers joined") {
+                        for cell in match Arc::try_unwrap(tls) {
+                            Ok(t) => t,
+                            // ThreadLocal is not Debug, so no expect() here
+                            Err(_) => unreachable!("the workers are joined"),
+                        } {
                             fold(&mut agg, &cell.into_inner());
                         }
                         black_box(agg.len());
@@ -181,7 +189,11 @@ fn main() {
                             }
                         });
                         let mut agg = Map::new();
-                        for cell in Arc::try_unwrap(tls).ok().expect("workers joined") {
+                        for cell in match Arc::try_unwrap(tls) {
+                            Ok(t) => t,
+                            // ThreadLocal is not Debug, so no expect() here
+                            Err(_) => unreachable!("the workers are joined"),
+                        } {
                             fold(&mut agg, &cell.0.into_inner());
                         }
                         black_box(agg.len());
