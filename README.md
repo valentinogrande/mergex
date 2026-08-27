@@ -376,9 +376,5 @@ cannot.
 
 ## Credits
 
-The benchmark suite (`benches/`), the measurement harnesses (`examples/`) and this
-README were written by Claude Code.
-
-## License
-
-Not chosen yet.
+The benchmark suite (`benches/`), the measurement harnesses (`examples/`), the source
+comments and documentation, and this README were written by Claude Code.

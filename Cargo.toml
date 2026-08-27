@@ -11,7 +11,6 @@ keywords = ["concurrency", "aggregation", "lock-free", "monoid", "threads"]
 categories = ["concurrency", "data-structures"]
 # the harnesses ship, so the published source matches the repository
 exclude = ["benchmarks.html"]
-# license = "MIT OR Apache-2.0"   # pick one before publishing; crates.io requires it
 
 [package.metadata.docs.rs]
 all-features = true
